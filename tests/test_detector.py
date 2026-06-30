@@ -1,0 +1,176 @@
+import numpy as np
+import pytest
+from datetime import datetime, timezone
+from src.detector import Detector, Event
+
+THRESHOLD = -30.0
+ABOVE = np.full(40, -25.0, dtype=np.float32)
+BELOW = np.full(40, -35.0, dtype=np.float32)
+TS = datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+# Debounce = 50 rows, post-trigger = 100 rows.
+# After last above-threshold row, need 51 rows to exit debounce + 99 more = 150 total.
+# Use 160 as safe drain margin.
+DRAIN = 160
+
+
+class MockBaseline:
+    threshold_db = THRESHOLD
+
+
+BL = MockBaseline()
+
+
+def drain(det, n=DRAIN):
+    """Feed n below-threshold rows; collect any completed events."""
+    events = []
+    for _ in range(n):
+        r = det.feed(BELOW, BL, timestamp=TS)
+        if r:
+            events.append(r)
+    return events
+
+
+class TestSingleRowSpike:
+    def test_suspected_rfi_true(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        assert len(events) == 1
+        assert events[0].suspected_rfi is True
+
+    def test_single_spike_has_one_event_frame(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        spike_rows = [f for f in events[0].frames if f.max() > THRESHOLD]
+        assert len(spike_rows) == 1
+
+
+class TestTwoRowSpike:
+    def test_suspected_rfi_false(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        assert len(events) == 1
+        assert events[0].suspected_rfi is False
+
+    def test_two_row_event_has_at_least_two_above_threshold_frames(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        above_frames = [f for f in events[0].frames if f.max() > THRESHOLD]
+        assert len(above_frames) >= 2
+
+
+class TestDebounce:
+    def _run_with_gap(self, gap_rows):
+        det = Detector()
+        events = []
+
+        def tick(row):
+            r = det.feed(row, BL, timestamp=TS)
+            if r:
+                events.append(r)
+
+        tick(ABOVE)
+        tick(ABOVE)
+        for _ in range(gap_rows):
+            tick(BELOW)
+        tick(ABOVE)
+        tick(ABOVE)
+        for _ in range(DRAIN):
+            tick(BELOW)
+        return events
+
+    def test_gap_49_merged(self):
+        events = self._run_with_gap(49)
+        assert len(events) == 1
+
+    def test_gap_51_two_events(self):
+        events = self._run_with_gap(51)
+        assert len(events) == 2
+
+
+class TestPreTriggerBuffer:
+    def test_pre_trigger_prepended_to_event(self):
+        det = Detector()
+        for _ in range(50):
+            det.feed(BELOW, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        assert len(events) == 1
+        below_frames = [f for f in events[0].frames if f.max() <= THRESHOLD]
+        assert len(below_frames) > 0
+
+    def test_pre_trigger_max_100_rows(self):
+        det = Detector()
+        for _ in range(300):
+            det.feed(BELOW, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        assert len(events) == 1
+        # Count only pre-event context (frames before the first above-threshold row)
+        first_above = next(i for i, f in enumerate(events[0].frames) if f.max() > THRESHOLD)
+        assert first_above <= 100
+
+
+class TestPostTriggerWindow:
+    def test_event_not_closed_before_100_post_trigger_rows(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        # 50 debounce rows + 49 post-trigger rows = 99 total; event must still be open
+        for _ in range(99):
+            r = det.feed(BELOW, BL, timestamp=TS)
+            assert r is None, "Event closed too early"
+
+    def test_event_closes_after_100_post_trigger_rows(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        result = None
+        for _ in range(DRAIN):
+            r = det.feed(BELOW, BL, timestamp=TS)
+            if r:
+                result = r
+                break
+        assert result is not None
+
+
+class TestInEvent:
+    def test_in_event_false_initially(self):
+        assert Detector().in_event is False
+
+    def test_in_event_true_during_event(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        assert det.in_event is True
+
+    def test_in_event_true_during_debounce(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(BELOW, BL, timestamp=TS)
+        assert det.in_event is True
+
+    def test_in_event_true_during_post_trigger(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        # Exhaust debounce window to enter post-trigger
+        for _ in range(52):
+            det.feed(BELOW, BL, timestamp=TS)
+        assert det.in_event is True
+
+    def test_in_event_false_after_event_closes(self):
+        det = Detector()
+        det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
+        drain(det, DRAIN)
+        assert det.in_event is False

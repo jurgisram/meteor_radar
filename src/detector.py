@@ -1,0 +1,119 @@
+from collections import deque
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Optional
+import numpy as np
+
+
+@dataclass
+class Event:
+    frames: list
+    start_time: datetime
+    end_time: datetime
+    suspected_rfi: bool
+
+
+_PRE_TRIGGER_CAPACITY = 1000   # rows in rolling pre-trigger buffer
+_PRE_TRIGGER_FLUSH = 100       # rows of pre-event context prepended on trigger
+_DEBOUNCE_ROWS = 50            # consecutive below-threshold rows before debounce expires
+_POST_TRIGGER_ROWS = 100       # rows collected after debounce expires
+_MIN_DURATION_ROWS = 2         # consecutive above-threshold rows to declare a real event
+
+_IDLE = 'idle'
+_PENDING = 'pending'
+_ACTIVE = 'active'
+_POST = 'post'
+
+
+class Detector:
+    def __init__(self):
+        self._pre_buf: deque = deque(maxlen=_PRE_TRIGGER_CAPACITY)
+        self._state = _IDLE
+        self._pending_row = None
+        self._pending_ts = None
+        self._frames: list = []
+        self._start_time: Optional[datetime] = None
+        self._below_count: int = 0   # consecutive below-threshold rows while ACTIVE
+        self._post_count: int = 0    # rows collected in post-trigger window
+
+    @property
+    def in_event(self) -> bool:
+        return self._state in (_PENDING, _ACTIVE, _POST)
+
+    def feed(self, row: np.ndarray, baseline, timestamp: Optional[datetime] = None) -> Optional['Event']:
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+
+        above = bool(row.max() > baseline.threshold_db)
+
+        if self._state == _IDLE:
+            if above:
+                self._pending_row = row
+                self._pending_ts = timestamp
+                self._state = _PENDING
+            else:
+                self._pre_buf.append(row)
+            return None
+
+        if self._state == _PENDING:
+            if above:
+                pre = list(self._pre_buf)[-_PRE_TRIGGER_FLUSH:]
+                self._frames = pre + [self._pending_row, row]
+                self._start_time = self._pending_ts
+                self._below_count = 0
+                self._pending_row = None
+                self._pending_ts = None
+                self._state = _ACTIVE
+            else:
+                # Single spike — emit as suspected RFI immediately
+                rfi_row = self._pending_row
+                rfi_ts = self._pending_ts
+                self._pending_row = None
+                self._pending_ts = None
+                self._pre_buf.append(rfi_row)
+                self._pre_buf.append(row)
+                self._state = _IDLE
+                return Event(frames=[rfi_row], start_time=rfi_ts, end_time=timestamp, suspected_rfi=True)
+            return None
+
+        if self._state == _ACTIVE:
+            self._frames.append(row)
+            if above:
+                self._below_count = 0
+            else:
+                self._below_count += 1
+                if self._below_count > _DEBOUNCE_ROWS:
+                    # Debounce expired — begin post-trigger window
+                    self._state = _POST
+                    self._post_count = 1   # this row is the first post-trigger row
+            return None
+
+        if self._state == _POST:
+            self._frames.append(row)
+            self._post_count += 1
+            if above:
+                # New event starting — close current event and move to pending
+                event = self._close_event(timestamp)
+                self._pending_row = row
+                self._pending_ts = timestamp
+                self._state = _PENDING
+                return event
+            if self._post_count >= _POST_TRIGGER_ROWS:
+                return self._close_event(timestamp)
+            return None
+
+        return None  # unreachable
+
+    def _close_event(self, end_time: datetime) -> Event:
+        event = Event(
+            frames=list(self._frames),
+            start_time=self._start_time,
+            end_time=end_time,
+            suspected_rfi=False,
+        )
+        self._frames = []
+        self._start_time = None
+        self._below_count = 0
+        self._post_count = 0
+        self._state = _IDLE
+        return event
