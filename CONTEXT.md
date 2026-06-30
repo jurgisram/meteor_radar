@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Forward scatter meteor detection using an RTL-SDR, monitoring the GRAVES space surveillance radar (143.050 MHz, Dijon, France) from Vilnius, Lithuania (~1800 km). Meteors create brief ionized trails that reflect the GRAVES signal toward the receiver. The end goal is a collection of printable, generative SVG visualizations — one unique artifact per detected event, derived from each event's raw signal shape.
+Forward scatter meteor detection using an RTL-SDR, monitoring the GRAVES space surveillance radar (143.050 MHz, Dijon, France) from Vilnius, Lithuania (~1800 km). Meteors create brief ionized trails that reflect the GRAVES signal toward the receiver. The end goal is a collection of printable, generative SVG visualizations — one unique artifact per detected event, derived from each event's **time × frequency heatmap** (mini spectrogram).
 
 ## Hardware (Fixed — No Planned Changes)
 
@@ -60,13 +60,15 @@ nohup rtl_power -f 143.00M:143.10M:100 -g 40 -i 1 -e 12h /mnt/hdd/output.csv > /
 
 Replace `rtl_power` with a custom Python daemon using `pyrtlsdr`. The key motivation: `rtl_power` generates ~670 MB/day of continuous spectral data. The custom pipeline logs only compact summaries continuously, and saves full-resolution raw samples only around detected events (<1 GB/year).
 
+**Sampling:** 5ms chunks (200 Hz power sampling). This captures sub-100ms underdense meteors that would appear as a single blip at coarser rates.
+
 **Architecture:**
 ```
 RTL-SDR V3
-  → pyrtlsdr @ 143.3 MHz center (extract 143.050 MHz bin digitally)
-  → signal strength sampling (10–100ms intervals)
-  → rolling baseline + threshold detection (3.0 dB)
-  → SQLite event logging
+  → pyrtlsdr @ 143.3 MHz center (IQ stream ~1 MSPS)
+  → FFT per 5ms chunk over ±200 Hz around 143.050 MHz
+  → rolling baseline + threshold detection (3.0 dB) on peak bin
+  → SQLite event logging (summary + full spectrogram snapshot)
 ```
 
 **SQLite schema** (per event):
@@ -75,9 +77,9 @@ RTL-SDR V3
 - `peak_power_db` — peak signal strength
 - `snr` — SNR above baseline at peak
 - `integrated_power` — area under the event curve
-- `raw_samples` — numpy array of power values around the event (pre + post window)
+- `spectrogram` — 2D numpy array (time × frequency) covering ±10s window around event, ±200 Hz band
 
-Raw samples are the key output — they feed the visualization pipeline.
+**The spectrogram is the key output** — it feeds the visualization pipeline. Each event's time × frequency fingerprint is unique: some will show a clean vertical streak (pure amplitude spike), others a diagonal chirp or frequency spread (Doppler from meteor velocity/geometry). These differences are what make each SVG artifact distinct.
 
 ### Phase 3 — Robustness
 
@@ -89,12 +91,12 @@ Raw samples are the key output — they feed the visualization pipeline.
 
 ### Phase 4 — Visualization Pipeline
 
-Each detected event generates a **unique static SVG** derived from its raw signal shape (the `raw_samples` array). These are collected and printed — not displayed live.
+Each detected event generates a **unique static SVG** from its spectrogram (time × frequency heatmap). These are collected and printed — not displayed live.
 
 - No WebSocket or real-time interface needed
-- Input: raw power sample array per event from SQLite
+- Input: `spectrogram` 2D array (time × frequency) per event from SQLite
 - Output: SVG file, one per event
-- The signal's rise, peak, and exponential decay curve are the generative seed — each meteor is physically unique
+- The heatmap encodes both the temporal shape (rise + decay) and frequency signature (Doppler chirp, frequency spread) — each meteor is physically unique in both dimensions
 
 Design of the SVG generation algorithm is TBD and is the creative core of the project.
 
