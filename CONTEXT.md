@@ -8,7 +8,7 @@ Forward scatter meteor detection using an RTL-SDR, monitoring the GRAVES space s
 
 - **Dongle**: RTL-SDR Blog V3 (R820T2 tuner)
 - **Antenna**: Stock kit dipole, both arms extended to **52cm** (half-wave for 143 MHz), mounted **horizontally** on a window
-- **Server**: Dell OptiPlex (model TBD — verify with `sudo dmidecode -s system-product-name`), headless Ubuntu
+- **Server**: Dell OptiPlex 3070, headless Ubuntu
 - **Data storage**: `/mnt/hdd/`
 - **Software**: `rtl-sdr`, `librtlsdr-dev` installed; `dvb_usb_rtl28xxu` kernel module blacklisted via `/etc/modprobe.d/blacklist-rtlsdr.conf`
 
