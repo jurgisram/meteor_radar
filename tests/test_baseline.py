@@ -216,3 +216,41 @@ class TestPersistence:
         self.tracker.save(self.conn)
         count = self.conn.execute("SELECT COUNT(*) FROM baseline_state").fetchone()[0]
         assert count == 1
+
+    def test_save_numpy_float32_loads_as_python_float(self):
+        """numpy float32 must be cast to Python float before sqlite3 INSERT.
+        sqlite3 doesn't recognise numpy scalars and stores them as 4-byte BLOBs;
+        loading a BLOB back and using it in float arithmetic causes a UFuncNoLoopError."""
+        import numpy as np
+        from src.baseline import BaselineTracker
+
+        tracker = BaselineTracker()
+        # Feed numpy float32 values — after the first sample _mean becomes np.float32
+        row = np.full(40, -62.5, dtype=np.float32)
+        for _ in range(500):
+            tracker.update(row.max(), in_event=False)
+        tracker.save(self.conn)
+
+        # Confirm sqlite3 stored REAL (Python float), not BLOB
+        raw = self.conn.execute("SELECT mean_db FROM baseline_state").fetchone()[0]
+        assert isinstance(raw, float), f"expected float from DB, got {type(raw)}"
+
+        # Full roundtrip: restored tracker must survive arithmetic with np.float32 input
+        restored = BaselineTracker()
+        assert restored.load(self.conn) is True
+        restored.update(row.max(), in_event=False)  # must not raise
+
+    def test_load_corrupt_blob_returns_false(self):
+        """If mean_db is a BLOB (old corrupt row), load() must return False, not crash."""
+        from src.baseline import BaselineTracker
+        import datetime as dt
+
+        now = dt.datetime.now(dt.timezone.utc).isoformat()
+        self.conn.execute(
+            "INSERT INTO baseline_state (saved_at, mean_db, std_db, sample_count, last_alive) VALUES (?,?,?,?,?)",
+            (now, b'\xc2\x80\xc2\x80', 0.5, 100, now),
+        )
+        self.conn.commit()
+
+        tracker = BaselineTracker()
+        assert tracker.load(self.conn) is False

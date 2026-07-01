@@ -95,7 +95,9 @@ class BaselineTracker:
         db_conn.execute("DELETE FROM baseline_state")
         db_conn.execute(
             "INSERT INTO baseline_state (saved_at, mean_db, std_db, sample_count, last_alive) VALUES (?,?,?,?,?)",
-            (now, self._mean, self._std, len(self._ring), now),
+            # Cast to Python float: sqlite3 doesn't recognise numpy scalars and
+            # would store them as 4-byte BLOBs, corrupting the restored state.
+            (now, float(self._mean), float(self._std), len(self._ring), now),
         )
         db_conn.commit()
 
@@ -106,19 +108,23 @@ class BaselineTracker:
         if row is None:
             return False
 
-        saved_at_str, mean_db, std_db, sample_count = row
-        saved_at = datetime.fromisoformat(saved_at_str)
-        if saved_at.tzinfo is None:
-            saved_at = saved_at.replace(tzinfo=timezone.utc)
-        age = datetime.now(timezone.utc) - saved_at
-        if age > timedelta(hours=2):
-            return False
+        try:
+            saved_at_str, mean_db, std_db, sample_count = row
+            saved_at = datetime.fromisoformat(saved_at_str)
+            if saved_at.tzinfo is None:
+                saved_at = saved_at.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - saved_at
+            if age > timedelta(hours=2):
+                return False
 
-        self._mean = mean_db
-        self._std = std_db
-        # Restore ring with sample_count copies of mean (approximation for std recompute)
-        n = min(sample_count, self.RING_SIZE)
-        self._ring = deque([mean_db] * n, maxlen=self.RING_SIZE)
-        self._warmed_up = True
-        self._total_samples = self.WARMUP_SAMPLES  # mark as past warmup
-        return True
+            self._mean = float(mean_db)
+            self._std = float(std_db)
+            # Restore ring with sample_count copies of mean (approximation for std recompute)
+            n = min(sample_count, self.RING_SIZE)
+            self._ring = deque([float(mean_db)] * n, maxlen=self.RING_SIZE)
+            self._warmed_up = True
+            self._total_samples = self.WARMUP_SAMPLES  # mark as past warmup
+            return True
+        except (ValueError, TypeError):
+            # Corrupt or unexpected DB value (e.g. old BLOB-stored numpy scalar) — cold start
+            return False
