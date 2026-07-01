@@ -1,0 +1,19 @@
+[Unit]
+Description=Meteor forward-scatter detection daemon
+After=local-fs.target
+RequiresMountsFor=/mnt/hdd
+
+[Service]
+Type=simple
+User=jurgis
+WorkingDirectory=/mnt/hdd/meteor_radar
+ExecStart=/usr/bin/python3 -m src.daemon
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meteor-radar
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
