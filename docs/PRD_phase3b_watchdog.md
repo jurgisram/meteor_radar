@@ -29,7 +29,7 @@ This is a separate concern from the systemd service (Phase 3a) — systemd handl
 ```
 systemd timer (every 5 min)
   └─ scripts/watchdog.py
-       ├─ open /mnt/hdd/meteor_radar.db
+       ├─ open /mnt/hdd/meteor_radar/meteor_radar.db
        ├─ read last_alive from baseline_state
        ├─ if stale > ALERT_THRESHOLD_MIN → POST Discord alert
        ├─ if daily_summary_due (09:00 window) → POST Discord summary
@@ -110,7 +110,7 @@ The watchdog script reads this env file at startup. The URL is never stored in t
 
 The watchdog fires every 5 minutes. Without suppression, a stuck daemon would flood Discord with alerts.
 
-**Implementation:** State file at `/mnt/hdd/meteor-watchdog-state.json`
+**Implementation:** State file at `/mnt/hdd/meteor_radar/meteor-watchdog-state.json`
 ```json
 {
   "alert_sent_at": "2026-07-01T08:30:00Z",
@@ -119,7 +119,7 @@ The watchdog fires every 5 minutes. Without suppression, a stuck daemon would fl
 }
 ```
 
-`/tmp` is wiped on every reboot, which resets alert dedup and would re-send the daily summary on boot. Using `/mnt/hdd/` keeps state across reboots. (The daily summary timing logic already depends on `last_summary_date` surviving restarts.)
+`/tmp` is wiped on every reboot, which resets alert dedup and would re-send the daily summary on boot. Keeping the state file inside `/mnt/hdd/meteor_radar/` (alongside the DB and log) survives reboots and keeps all runtime files in one place. (The daily summary timing logic already depends on `last_summary_date` surviving restarts.)
 
 - Send alert only if: no alert sent in last 60 minutes, OR this is a new outage (heartbeat was fresh in the previous check)
 - Send recovery notice only once per outage
@@ -138,7 +138,7 @@ After=meteor-radar.service
 Type=oneshot
 User=jurgis
 EnvironmentFile=/etc/meteor-radar-watchdog.env
-ExecStart=/usr/bin/python3 /home/jurgis/meteor_radar/scripts/watchdog.py
+ExecStart=/usr/bin/python3 /mnt/hdd/meteor_radar/scripts/watchdog.py
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=meteor-watchdog
@@ -195,9 +195,10 @@ summary_due = (
 ## File Layout
 
 ```
-~/meteor_radar/
-└── scripts/
-    └── watchdog.py          # NEW — watchdog script
+/mnt/hdd/meteor_radar/
+├── scripts/
+│   └── watchdog.py              # NEW — watchdog script
+└── meteor-watchdog-state.json   # runtime state — alert dedup + last_summary_date (persists across reboots)
 
 /etc/systemd/system/
 ├── meteor-watchdog.service  # NEW
@@ -205,7 +206,4 @@ summary_due = (
 
 /etc/
 └── meteor-radar-watchdog.env  # NEW — webhook URL (manual, not in repo)
-
-/mnt/hdd/
-└── meteor-watchdog-state.json  # runtime state — alert dedup + last_summary_date (persists across reboots)
 ```

@@ -5,8 +5,8 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/jurgisram/meteor_radar"
-REPO_DIR="$HOME/meteor_radar"
-DATA_DIR="/mnt/hdd"
+REPO_DIR="/mnt/hdd/meteor_radar"
+DATA_DIR="/mnt/hdd/meteor_radar"
 
 echo "=== Meteor Radar Deployment ==="
 echo ""
@@ -98,7 +98,7 @@ echo ""
 echo "[6/6] Running environment check..."
 python3 - <<'PYEOF'
 import sys, os
-sys.path.insert(0, os.path.expanduser('~/meteor_radar'))
+sys.path.insert(0, os.getcwd())
 try:
     from src.db import init_db
     conn = init_db('/tmp/meteor_test.db')
@@ -129,14 +129,14 @@ echo "=== Deployment complete ==="
 echo ""
 echo "HITL validation steps:"
 echo "  1. Quick acquisition test (10 rows of 40 floats):"
-echo "       cd ~/meteor_radar && python3 -c \"from src.acquisition import Acquisition; a = Acquisition(); a.open_device(); [print(a.read_row()) for _ in range(10)]; a.close()\""
+echo "       cd /mnt/hdd/meteor_radar && python3 -c \"from src.acquisition import Acquisition; a = Acquisition(); a.open_device(); [print(a.read_row()) for _ in range(10)]; a.close()\""
 echo ""
 echo "  2. Run daemon (1h unattended, Ctrl+C to stop):"
-echo "       cd ~/meteor_radar && tmux new -s meteor"
+echo "       cd /mnt/hdd/meteor_radar && tmux new -s meteor"
 echo "       python3 -m src.daemon"
 echo ""
 echo "  3. Check events after a run:"
-echo "       sqlite3 /mnt/hdd/meteor_radar.db 'SELECT timestamp, duration_ms, snr_db FROM events ORDER BY id DESC LIMIT 20;'"
+echo "       sqlite3 /mnt/hdd/meteor_radar/meteor_radar.db 'SELECT timestamp, duration_ms, snr_db FROM events ORDER BY id DESC LIMIT 20;'"
 echo ""
 echo "  4. Tail the log:"
-echo "       tail -f /mnt/hdd/meteor_daemon.log"
+echo "       tail -f /mnt/hdd/meteor_radar/meteor_daemon.log"

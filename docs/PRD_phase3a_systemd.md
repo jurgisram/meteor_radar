@@ -34,7 +34,7 @@ RequiresMountsFor=/mnt/hdd
 [Service]
 Type=simple
 User=jurgis
-WorkingDirectory=/home/jurgis/meteor_radar
+WorkingDirectory=/mnt/hdd/meteor_radar
 ExecStart=/usr/bin/python3 -m src.daemon
 Restart=always
 RestartSec=30
@@ -53,7 +53,7 @@ WantedBy=multi-user.target
 - `RestartSec=30` — 30-second cooldown between restarts. Gives the RTL-SDR USB subsystem time to recover after a disconnect or SIGKILL. Too short (< 10s) risks a restart loop that hammers the USB device.
 - `User=jurgis` — runs as the normal user, not root. The RTL-SDR Blog udev rules install group permissions allowing non-root USB access.
 - `PYTHONUNBUFFERED=1` — ensures Python stdout/stderr flush immediately to journald rather than buffering.
-- `StandardOutput=journal` — replaces the rotating log file in `daemon.py`. The `_setup_logging()` function currently writes to `/mnt/hdd/meteor_daemon.log` via `RotatingFileHandler`; this should be retained as a secondary sink (useful for `tail -f` without journalctl), but journald becomes the primary.
+- `StandardOutput=journal` — replaces the rotating log file in `daemon.py`. The `_setup_logging()` function currently writes to `/mnt/hdd/meteor_radar/meteor_daemon.log` via `RotatingFileHandler`; this should be retained as a secondary sink (useful for `tail -f` without journalctl), but journald becomes the primary.
 
 ---
 
@@ -126,7 +126,7 @@ systemctl is-enabled meteor-radar  # should print "enabled"
 /etc/systemd/system/
 └── meteor-radar.service     # NEW — unit file
 
-~/meteor_radar/
+/mnt/hdd/meteor_radar/
 └── scripts/
     └── install-service.sh   # NEW — extracted from deploy.sh for clarity
 ```

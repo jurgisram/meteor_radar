@@ -63,7 +63,7 @@ def init_db(path: str) -> sqlite3.Connection:
 
 if __name__ == "__main__":
     _check_rtlsdr()
-    _check_writable("/mnt/hdd")
-    conn = init_db("/mnt/hdd/meteor_radar.db")
+    _check_writable("/mnt/hdd/meteor_radar")
+    conn = init_db("/mnt/hdd/meteor_radar/meteor_radar.db")
     conn.close()
-    print("Database initialised at /mnt/hdd/meteor_radar.db")
+    print("Database initialised at /mnt/hdd/meteor_radar/meteor_radar.db")

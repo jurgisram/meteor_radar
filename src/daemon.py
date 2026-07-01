@@ -12,8 +12,8 @@ from src.db import init_db
 from src.detector import Detector
 from src.writer import EventWriter
 
-LOG_PATH = '/mnt/hdd/meteor_daemon.log'
-DB_PATH = '/mnt/hdd/meteor_radar.db'
+LOG_PATH = '/mnt/hdd/meteor_radar/meteor_daemon.log'
+DB_PATH = '/mnt/hdd/meteor_radar/meteor_radar.db'
 
 log = logging.getLogger(__name__)
 
