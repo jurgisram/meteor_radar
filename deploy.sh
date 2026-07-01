@@ -13,10 +13,10 @@ echo ""
 
 # --- 1. Clone or update repo ---
 if [ -d "$REPO_DIR/.git" ]; then
-    echo "[1/7] Updating repo..."
+    echo "[1/8] Updating repo..."
     git -C "$REPO_DIR" pull --ff-only
 else
-    echo "[1/7] Cloning repo..."
+    echo "[1/8] Cloning repo..."
     git clone "$REPO_URL" "$REPO_DIR"
 fi
 
@@ -24,7 +24,7 @@ cd "$REPO_DIR"
 
 # --- 2. System packages ---
 echo ""
-echo "[2/7] Checking system packages..."
+echo "[2/8] Checking system packages..."
 MISSING=()
 for pkg in python3 python3-pip cmake build-essential libusb-1.0-0-dev pkg-config; do
     dpkg -s "$pkg" &>/dev/null || MISSING+=("$pkg")
@@ -56,14 +56,14 @@ fi
 
 # --- 3. Python dependencies ---
 echo ""
-echo "[3/7] Installing Python dependencies..."
+echo "[3/8] Installing Python dependencies..."
 # pyrtlsdr >= 0.3.0 calls rtlsdr_set_dithering at import time; that symbol
 # doesn't exist in any released librtlsdr build. Pin to 0.2.93 which works.
 pip3 install --quiet --break-system-packages 'pyrtlsdr==0.2.93' numpy
 
 # --- 4. RTL-SDR device check ---
 echo ""
-echo "[4/7] Checking RTL-SDR device..."
+echo "[4/8] Checking RTL-SDR device..."
 if rtl_test -t 2>&1 | grep -q "Found 1 device"; then
     echo "  RTL-SDR found."
 elif lsusb | grep -qi "realtek\|rtl28"; then
@@ -84,7 +84,7 @@ fi
 
 # --- 5. Data directory ---
 echo ""
-echo "[5/7] Checking data directory ($DATA_DIR)..."
+echo "[5/8] Checking data directory ($DATA_DIR)..."
 if [ -d "$DATA_DIR" ] && [ -w "$DATA_DIR" ]; then
     echo "  $DATA_DIR is writable: OK"
     df -h "$DATA_DIR" | tail -1 | awk '{print "  Disk: "$4" free of "$2}'
@@ -95,7 +95,7 @@ fi
 
 # --- 6. Run env/DB check ---
 echo ""
-echo "[6/7] Running environment check..."
+echo "[6/8] Running environment check..."
 python3 - <<'PYEOF'
 import sys, os
 sys.path.insert(0, os.getcwd())
@@ -126,7 +126,7 @@ PYEOF
 
 # --- 7. systemd service ---
 echo ""
-echo "[7/7] Installing meteor-radar systemd service..."
+echo "[7/8] Installing meteor-radar systemd service..."
 if ! grep -q '/mnt/hdd' /etc/fstab; then
     echo "  WARNING: /mnt/hdd not found in /etc/fstab — RequiresMountsFor= will have no effect."
     echo "  Add an fstab entry for the HDD to ensure the service waits for mount on boot."
@@ -140,6 +140,26 @@ if systemctl is-active --quiet meteor-radar; then
 else
     echo "  WARNING: meteor-radar.service is not active — check: journalctl -u meteor-radar -n 20"
 fi
+
+# --- 8. systemd watchdog timer ---
+echo ""
+echo "[8/8] Installing meteor-watchdog systemd timer..."
+if [ ! -f /etc/meteor-radar-watchdog.env ]; then
+    echo "  Discord webhook URL not configured."
+    read -rp "  Enter Discord webhook URL: " WEBHOOK_URL
+    echo "DISCORD_WEBHOOK_URL=$WEBHOOK_URL" | sudo tee /etc/meteor-radar-watchdog.env > /dev/null
+    sudo chmod 600 /etc/meteor-radar-watchdog.env
+    sudo chown jurgis /etc/meteor-radar-watchdog.env
+    echo "  /etc/meteor-radar-watchdog.env created (chmod 600)"
+else
+    echo "  /etc/meteor-radar-watchdog.env already present — skipping prompt"
+fi
+sudo cp "$REPO_DIR/scripts/meteor-watchdog.service" /etc/systemd/system/meteor-watchdog.service
+sudo cp "$REPO_DIR/scripts/meteor-watchdog.timer" /etc/systemd/system/meteor-watchdog.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now meteor-watchdog.timer
+echo "  Timer status:"
+systemctl list-timers meteor-watchdog.timer --no-pager
 
 echo ""
 echo "=== Deployment complete ==="
