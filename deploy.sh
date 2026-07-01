@@ -57,7 +57,9 @@ fi
 # --- 3. Python dependencies ---
 echo ""
 echo "[3/6] Installing Python dependencies..."
-pip3 install --quiet --break-system-packages pyrtlsdr numpy
+# pyrtlsdr >= 0.3.0 calls rtlsdr_set_dithering at import time; that symbol
+# doesn't exist in any released librtlsdr build. Pin to 0.2.93 which works.
+pip3 install --quiet --break-system-packages 'pyrtlsdr==0.2.93' numpy
 
 # --- 4. RTL-SDR device check ---
 echo ""
