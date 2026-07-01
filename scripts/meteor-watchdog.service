@@ -1,0 +1,12 @@
+[Unit]
+Description=Meteor radar health watchdog
+After=meteor-radar.service
+
+[Service]
+Type=oneshot
+User=jurgis
+EnvironmentFile=/etc/meteor-radar-watchdog.env
+ExecStart=/usr/bin/python3 /mnt/hdd/meteor_radar/scripts/watchdog.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meteor-watchdog
