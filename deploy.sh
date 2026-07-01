@@ -26,7 +26,7 @@ cd "$REPO_DIR"
 echo ""
 echo "[2/6] Checking system packages..."
 MISSING=()
-for pkg in python3 python3-pip cmake build-essential; do
+for pkg in python3 python3-pip cmake build-essential libusb-1.0-0-dev pkg-config; do
     dpkg -s "$pkg" &>/dev/null || MISSING+=("$pkg")
 done
 
