@@ -45,7 +45,13 @@ No long-running process. The timer fires a short-lived Python script every 5 min
 ```python
 ALERT_THRESHOLD_MINUTES = 10
 
-last_alive = read_last_alive_from_db()  # UTC ISO8601 string
+last_alive = read_last_alive_from_db()  # UTC ISO8601 string or None
+
+if last_alive is None:
+    # DB exists but daemon has never written a heartbeat (first run, or baseline_state empty).
+    # Not an alert condition — treat as "just started".
+    sys.exit(0)
+
 age_minutes = (datetime.now(UTC) - datetime.fromisoformat(last_alive)).total_seconds() / 60
 
 if age_minutes > ALERT_THRESHOLD_MINUTES:
@@ -54,7 +60,7 @@ if age_minutes > ALERT_THRESHOLD_MINUTES:
 
 The 10-minute threshold allows for:
 - One full systemd restart cycle (30s cooldown + ~15s startup + 900s warmup skipped on resume)
-- Wait — on resume, the daemon loads saved baseline state and skips warmup. Startup to first heartbeat should be < 60s.
+- On resume, the daemon loads saved baseline state and skips warmup. Startup to first heartbeat should be < 60s.
 - 10 minutes therefore catches: daemon crashed AND systemd failed to restart (e.g. device not found loop)
 
 ---
@@ -78,8 +84,9 @@ Service may be down. Check: journalctl -u meteor-radar -n 50
 Events (last 24h): 12 (3 suspected RFI filtered)
 Total events all-time: 847
 Last heartbeat: 2 min ago
-Service uptime: 23h 47m
 ```
+
+Note: "Service uptime" is omitted — there is no startup timestamp in the DB or unit files accessible to a oneshot script. If uptime becomes important, store a `started_at` key in `baseline_state` when the daemon initialises, then read it here.
 
 ---
 
@@ -103,13 +110,16 @@ The watchdog script reads this env file at startup. The URL is never stored in t
 
 The watchdog fires every 5 minutes. Without suppression, a stuck daemon would flood Discord with alerts.
 
-**Implementation:** State file at `/tmp/meteor-watchdog-state.json`
+**Implementation:** State file at `/mnt/hdd/meteor-watchdog-state.json`
 ```json
 {
   "alert_sent_at": "2026-07-01T08:30:00Z",
-  "recovered": false
+  "recovered": false,
+  "last_summary_date": "2026-07-01"
 }
 ```
+
+`/tmp` is wiped on every reboot, which resets alert dedup and would re-send the daily summary on boot. Using `/mnt/hdd/` keeps state across reboots. (The daily summary timing logic already depends on `last_summary_date` surviving restarts.)
 
 - Send alert only if: no alert sent in last 60 minutes, OR this is a new outage (heartbeat was fresh in the previous check)
 - Send recovery notice only once per outage
@@ -157,15 +167,16 @@ WantedBy=timers.target
 The watchdog checks at each 5-minute fire whether a daily summary is due:
 
 ```python
-now = datetime.now(local_tz)
+LOCAL_TZ = ZoneInfo("Europe/Vilnius")  # explicit — daemon is all-UTC, watchdog needs local wall time
+
+now = datetime.now(LOCAL_TZ)
 summary_due = (
-    now.hour == 9 and
-    now.minute < 5 and  # within the first 5-min window of 09:00
-    last_summary_date != now.date()
+    now.hour == 9 and          # any firing in the 09:xx hour triggers
+    last_summary_date != now.date()  # but only once per calendar day
 )
 ```
 
-State file tracks `last_summary_date` to prevent duplicate summaries.
+`last_summary_date` is persisted in the state file (see Deduplication section). The `now.minute < 5` guard is intentionally removed: it relied on the timer firing exactly within the first 5-minute window of 09:00, which `OnUnitActiveSec` drift can miss (timer fires at 08:58 → next fire at 09:03, minute=3 → sends; but if the 09:03 fire is skipped for any reason, the next is 09:08, minute=8 → missed entirely). Checking the full hour is robust against drift.
 
 ---
 
@@ -194,4 +205,7 @@ State file tracks `last_summary_date` to prevent duplicate summaries.
 
 /etc/
 └── meteor-radar-watchdog.env  # NEW — webhook URL (manual, not in repo)
+
+/mnt/hdd/
+└── meteor-watchdog-state.json  # runtime state — alert dedup + last_summary_date (persists across reboots)
 ```

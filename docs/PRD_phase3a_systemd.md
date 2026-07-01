@@ -91,7 +91,9 @@ Re-running deploy.sh should be safe: `systemctl restart` handles the in-place up
 
 The HDD at `/mnt/hdd` is currently mounted manually or via `/etc/fstab`. For the `RequiresMountsFor` directive to work, `/mnt/hdd` must be in `/etc/fstab` with a proper mount entry. The deploy script should verify this and warn if the entry is missing.
 
-If `/mnt/hdd` is not in fstab, `RequiresMountsFor` is a no-op and the service may start before the HDD is available. In that case, `db.py`'s `_check_writable()` will catch it and `systemd` will restart after 30s — acceptable degraded behavior.
+If `/mnt/hdd` is not in fstab, `RequiresMountsFor` is a no-op and the service may start before the HDD is available. **`daemon.main()` must call `db.check_writable()` before `init_db()`** so an unmounted HDD raises immediately and lets systemd restart cleanly after 30s. Without this call, `init_db()` silently creates the SQLite DB on the root filesystem and the daemon appears healthy while writing to the wrong location.
+
+This requires a small code change to `src/daemon.py`: add `db.check_writable()` (or inline the path check) as the first statement in `main()`, before `init_db()` is called.
 
 ---
 
