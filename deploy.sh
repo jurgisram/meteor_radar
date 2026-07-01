@@ -26,7 +26,7 @@ cd "$REPO_DIR"
 echo ""
 echo "[2/6] Checking system packages..."
 MISSING=()
-for pkg in python3 python3-pip librtlsdr-dev; do
+for pkg in python3 python3-pip cmake build-essential; do
     dpkg -s "$pkg" &>/dev/null || MISSING+=("$pkg")
 done
 
@@ -35,6 +35,23 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     sudo apt-get install -y "${MISSING[@]}"
 else
     echo "  All system packages present."
+fi
+
+# Install RTL-SDR Blog V3 fork of librtlsdr (has rtlsdr_set_dithering; Ubuntu package lacks it)
+if nm -D /lib/x86_64-linux-gnu/librtlsdr.so 2>/dev/null | grep -q rtlsdr_set_dithering; then
+    echo "  librtlsdr (RTL-SDR Blog fork): already installed."
+else
+    echo "  Building librtlsdr from RTL-SDR Blog fork (Ubuntu package is missing rtlsdr_set_dithering)..."
+    BUILD_DIR=$(mktemp -d)
+    git clone --depth=1 https://github.com/rtlsdrblog/rtl-sdr-blog.git "$BUILD_DIR/rtl-sdr-blog"
+    mkdir -p "$BUILD_DIR/rtl-sdr-blog/build"
+    cmake -S "$BUILD_DIR/rtl-sdr-blog" -B "$BUILD_DIR/rtl-sdr-blog/build" \
+        -DINSTALL_UDEV_RULES=ON -DCMAKE_BUILD_TYPE=Release -DDETACH_KERNEL_DRIVER=ON
+    make -C "$BUILD_DIR/rtl-sdr-blog/build" -j"$(nproc)"
+    sudo make -C "$BUILD_DIR/rtl-sdr-blog/build" install
+    sudo ldconfig
+    rm -rf "$BUILD_DIR"
+    echo "  librtlsdr (RTL-SDR Blog fork): installed."
 fi
 
 # --- 3. Python dependencies ---
