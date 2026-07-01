@@ -139,6 +139,46 @@ class TestPeriodicOps:
         baseline.save.assert_not_called()
 
 
+class TestWritableGuard:
+    """daemon.main() should call _check_writable before anything else."""
+
+    def test_daemon_main_exits_when_hdd_missing(self):
+        """If _check_writable calls sys.exit(1), main() raises SystemExit(1)."""
+        with patch('src.daemon._check_writable', side_effect=lambda p: sys.exit(1)):
+            with pytest.raises(SystemExit) as exc_info:
+                from src.daemon import main
+                main()
+            assert exc_info.value.code == 1
+
+    def test_daemon_main_calls_writable_check_before_init_db(self):
+        """_check_writable must be called before init_db."""
+        call_order = []
+
+        def fake_check_writable(path):
+            call_order.append('_check_writable')
+
+        def fake_init_db(path):
+            call_order.append('init_db')
+            return MagicMock()
+
+        mock_acq = MagicMock()
+        mock_acq.open_device.side_effect = SystemExit(0)
+
+        mock_baseline = MagicMock()
+        mock_baseline.load.return_value = False
+
+        with patch('src.daemon._check_writable', side_effect=fake_check_writable), \
+             patch('src.daemon.init_db', side_effect=fake_init_db), \
+             patch('src.daemon._setup_logging'), \
+             patch('src.daemon.BaselineTracker', return_value=mock_baseline), \
+             patch('src.daemon.Acquisition', return_value=mock_acq):
+            with pytest.raises(SystemExit):
+                from src.daemon import main
+                main()
+
+        assert call_order.index('_check_writable') < call_order.index('init_db')
+
+
 class TestAcquisitionErrorHandling:
     """USB error handling: retry once, then exit."""
 

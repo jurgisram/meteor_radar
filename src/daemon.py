@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 
 from src.acquisition import Acquisition, AcquisitionError
 from src.baseline import BaselineTracker
-from src.db import init_db
+from src.db import init_db, _check_writable
 from src.detector import Detector
 from src.writer import EventWriter
 
@@ -97,6 +97,7 @@ def run_loop(*, acq, baseline, detector, writer, db_conn, max_iterations=None):
 
 
 def main():
+    _check_writable('/mnt/hdd/meteor_radar')
     _setup_logging()
     log.info("meteor_radar daemon starting")
 
