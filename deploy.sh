@@ -161,6 +161,19 @@ sudo systemctl enable --now meteor-watchdog.timer
 echo "  Timer status:"
 systemctl list-timers meteor-watchdog.timer --no-pager
 
+# --- 9. API service ---
+echo ""
+echo "[9/9] Installing meteor-radar-api service (port 8765)..."
+sudo cp "$REPO_DIR/scripts/meteor-radar-api.service" /etc/systemd/system/meteor-radar-api.service
+sudo systemctl daemon-reload
+sudo systemctl enable meteor-radar-api
+sudo systemctl restart meteor-radar-api
+if systemctl is-active --quiet meteor-radar-api; then
+    echo "  meteor-radar-api.service: active on :8765"
+else
+    echo "  WARNING: meteor-radar-api.service is not active — check: journalctl -u meteor-radar-api -n 20"
+fi
+
 echo ""
 echo "=== Deployment complete ==="
 echo ""

@@ -1,0 +1,15 @@
+[Unit]
+Description=Meteor radar read-only query API
+After=network.target
+RequiresMountsFor=/mnt/hdd
+
+[Service]
+Type=simple
+User=jurgis
+WorkingDirectory=/mnt/hdd/meteor_radar
+ExecStart=/usr/bin/python3 -m src.api
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
