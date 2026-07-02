@@ -29,10 +29,13 @@ def _make_baseline(warmed_up=True, drifting=False, threshold=-30.0, mean=-33.0, 
 
 def _make_event():
     from src.detector import Event
+    start = datetime(2026, 1, 1, 0, 0, 0)
+    end = datetime(2026, 1, 1, 0, 0, 1)
     return Event(
         frames=[np.full(40, -25.0, dtype=np.float32)],
-        start_time=datetime(2026, 1, 1, 0, 0, 0),
-        end_time=datetime(2026, 1, 1, 0, 0, 1),
+        start_time=start,
+        end_time=end,
+        signal_end_time=end,
         suspected_rfi=False,
     )
 
@@ -101,10 +104,12 @@ class TestEventSuppression:
     def test_rfi_event_suppressed_even_after_warmup(self):
         from src.detector import Event
         baseline = _make_baseline(warmed_up=True, drifting=False)
+        ts = datetime(2026, 1, 1, 0, 0, 1)
         rfi_event = Event(
             frames=[np.full(40, -25.0, dtype=np.float32)],
             start_time=datetime(2026, 1, 1, 0, 0, 0),
-            end_time=datetime(2026, 1, 1, 0, 0, 1),
+            end_time=ts,
+            signal_end_time=ts,
             suspected_rfi=True,
         )
         writer = self._run_one(baseline, detector_event=rfi_event)

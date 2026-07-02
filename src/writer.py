@@ -25,7 +25,7 @@ class EventWriter:
         spectrogram_shape = f"{n_rows},40"
         spectrogram_blob = spectrogram.tobytes()
 
-        duration_ms = (event.end_time - event.start_time).total_seconds() * 1000
+        duration_ms = (event.signal_end_time - event.start_time).total_seconds() * 1000
         peak_power_db = float(spectrogram.max())
         snr_db = peak_power_db - baseline.mean
         integrated_power = float(np.sum(np.maximum(0.0, spectrogram - baseline.mean)))

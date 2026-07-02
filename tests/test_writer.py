@@ -16,14 +16,18 @@ def make_frames(n=5, value=-25.0):
     return [np.full(40, value, dtype=np.float32) for _ in range(n)]
 
 
-def make_event(start_offset_s=0, duration_s=1.0, suspected_rfi=False, frames=None):
+def make_event(start_offset_s=0, duration_s=1.0, suspected_rfi=False, frames=None, signal_duration_s=None):
     base = datetime(2026, 6, 30, 12, 0, 0, tzinfo=timezone.utc)
     start = base + timedelta(seconds=start_offset_s)
     end = start + timedelta(seconds=duration_s)
+    # signal_end_time defaults to end_time (signal fills the full window)
+    sig_dur = signal_duration_s if signal_duration_s is not None else duration_s
+    signal_end = start + timedelta(seconds=sig_dur)
     return Event(
         frames=frames if frames is not None else make_frames(),
         start_time=start,
         end_time=end,
+        signal_end_time=signal_end,
         suspected_rfi=suspected_rfi,
     )
 
@@ -109,10 +113,18 @@ class TestSpectrogramSerialisation:
 
 class TestDerivedMetrics:
     def test_duration_ms(self, db):
+        # Default: signal_end_time == end_time, so duration_ms == full event window
         writer = EventWriter(db)
         writer.write(make_event(0, duration_s=2.5), FakeBaseline())
         val = db.execute("SELECT duration_ms FROM events").fetchone()[0]
         assert val == pytest.approx(2500.0)
+
+    def test_duration_ms_uses_signal_end_not_post_window(self, db):
+        # When signal_duration_s < duration_s, duration_ms reflects signal_end_time only
+        writer = EventWriter(db)
+        writer.write(make_event(0, duration_s=10.0, signal_duration_s=1.5), FakeBaseline())
+        val = db.execute("SELECT duration_ms FROM events").fetchone()[0]
+        assert val == pytest.approx(1500.0)
 
     def test_peak_power_db(self, db):
         frames = [np.full(40, -28.0, dtype=np.float32), np.full(40, -22.0, dtype=np.float32)]

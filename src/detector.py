@@ -10,6 +10,7 @@ class Event:
     frames: list
     start_time: datetime
     end_time: datetime
+    signal_end_time: datetime   # true signal end (when debounce expired); same as end_time for RFI
     suspected_rfi: bool
 
 
@@ -38,6 +39,7 @@ class Detector:
         self._start_time: Optional[datetime] = None
         self._below_count: int = 0   # consecutive below-threshold rows while ACTIVE
         self._post_count: int = 0    # rows collected in post-trigger window
+        self._signal_end_time: Optional[datetime] = None  # recorded when ACTIVE→POST
 
     @property
     def in_event(self) -> bool:
@@ -87,7 +89,8 @@ class Detector:
                     self._pre_buf.append(r)
                 self._pre_buf.append(row)
                 self._state = _IDLE
-                return Event(frames=rfi_rows, start_time=rfi_ts, end_time=timestamp, suspected_rfi=True)
+                return Event(frames=rfi_rows, start_time=rfi_ts, end_time=timestamp,
+                             signal_end_time=timestamp, suspected_rfi=True)
             return None
 
         if self._state == _ACTIVE:
@@ -97,7 +100,8 @@ class Detector:
             else:
                 self._below_count += 1
                 if self._below_count > _DEBOUNCE_ROWS:
-                    # Debounce expired — begin post-trigger window
+                    # Debounce expired — record true signal end and begin post-trigger window
+                    self._signal_end_time = timestamp
                     self._state = _POST
                     self._post_count = 1   # this row is the first post-trigger row
             return None
@@ -121,15 +125,18 @@ class Detector:
         return None  # unreachable
 
     def _close_event(self, end_time: datetime) -> Event:
+        signal_end = self._signal_end_time if self._signal_end_time is not None else end_time
         event = Event(
             frames=list(self._frames),
             start_time=self._start_time,
             end_time=end_time,
+            signal_end_time=signal_end,
             suspected_rfi=False,
         )
         self._frames = []
         self._start_time = None
         self._below_count = 0
         self._post_count = 0
+        self._signal_end_time = None
         self._state = _IDLE
         return event
