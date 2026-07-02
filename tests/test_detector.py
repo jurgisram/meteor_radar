@@ -107,12 +107,14 @@ class TestDebounce:
             tick(BELOW)
         return events
 
-    def test_gap_49_merged(self):
+    def test_gap_within_debounce_merges(self):
+        # gap < 51 rows: second burst arrives while still in ACTIVE → one merged event
         events = self._run_with_gap(49)
         assert len(events) == 1
 
-    def test_gap_51_two_events(self):
-        events = self._run_with_gap(51)
+    def test_gap_exceeds_debounce_and_inter_event_gives_two_events(self):
+        # gap >= 100: 51 rows exit debounce into POST, 49 more satisfy _MIN_INTER_EVENT_ROWS(50)
+        events = self._run_with_gap(105)
         assert len(events) == 2
 
 

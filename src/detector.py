@@ -18,6 +18,7 @@ _PRE_TRIGGER_FLUSH = 100       # rows of pre-event context prepended on trigger
 _DEBOUNCE_ROWS = 50            # consecutive below-threshold rows before debounce expires
 _POST_TRIGGER_ROWS = 100       # rows collected after debounce expires
 _MIN_DURATION_ROWS = 5         # consecutive above-threshold rows to declare a real event (500 ms)
+_MIN_INTER_EVENT_ROWS = 50     # minimum POST rows before a new event can start (5 s)
 
 _IDLE = 'idle'
 _PENDING = 'pending'
@@ -104,11 +105,13 @@ class Detector:
         if self._state == _POST:
             self._frames.append(row)
             self._post_count += 1
-            if above:
-                # New event starting — close current event and move to pending
+            if above and self._post_count >= _MIN_INTER_EVENT_ROWS:
+                # Sufficient quiet time has passed — close current event and start new pending
                 event = self._close_event(timestamp)
                 self._pending_row = row
                 self._pending_ts = timestamp
+                self._pending_rows = [row]
+                self._pending_count = 1
                 self._state = _PENDING
                 return event
             if self._post_count >= _POST_TRIGGER_ROWS:
