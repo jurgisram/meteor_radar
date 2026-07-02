@@ -48,21 +48,42 @@ class TestSingleRowSpike:
 
 
 class TestTwoRowSpike:
-    def test_suspected_rfi_false(self):
+    # With _MIN_DURATION_ROWS=5, two rows are not enough to promote to ACTIVE;
+    # they exit PENDING as a suspected_rfi event instead.
+    def test_two_rows_still_suspected_rfi(self):
         det = Detector()
         det.feed(ABOVE, BL, timestamp=TS)
         det.feed(ABOVE, BL, timestamp=TS)
         events = drain(det)
         assert len(events) == 1
-        assert events[0].suspected_rfi is False
+        assert events[0].suspected_rfi is True
 
-    def test_two_row_event_has_at_least_two_above_threshold_frames(self):
+    def test_two_row_rfi_has_two_above_threshold_frames(self):
         det = Detector()
         det.feed(ABOVE, BL, timestamp=TS)
         det.feed(ABOVE, BL, timestamp=TS)
         events = drain(det)
         above_frames = [f for f in events[0].frames if f.max() > THRESHOLD]
-        assert len(above_frames) >= 2
+        assert len(above_frames) == 2
+
+
+class TestFiveRowEvent:
+    # _MIN_DURATION_ROWS=5: exactly 5 consecutive above rows produces a real event.
+    def test_five_rows_not_rfi(self):
+        det = Detector()
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        assert len(events) == 1
+        assert events[0].suspected_rfi is False
+
+    def test_four_rows_still_rfi(self):
+        det = Detector()
+        for _ in range(4):
+            det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        assert len(events) == 1
+        assert events[0].suspected_rfi is True
 
 
 class TestDebounce:
@@ -75,12 +96,13 @@ class TestDebounce:
             if r:
                 events.append(r)
 
-        tick(ABOVE)
-        tick(ABOVE)
+        # Need 5 ABOVE rows to satisfy MIN_DURATION_ROWS and enter ACTIVE
+        for _ in range(5):
+            tick(ABOVE)
         for _ in range(gap_rows):
             tick(BELOW)
-        tick(ABOVE)
-        tick(ABOVE)
+        for _ in range(5):
+            tick(ABOVE)
         for _ in range(DRAIN):
             tick(BELOW)
         return events
@@ -99,8 +121,8 @@ class TestPreTriggerBuffer:
         det = Detector()
         for _ in range(50):
             det.feed(BELOW, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
         events = drain(det)
         assert len(events) == 1
         below_frames = [f for f in events[0].frames if f.max() <= THRESHOLD]
@@ -110,8 +132,8 @@ class TestPreTriggerBuffer:
         det = Detector()
         for _ in range(300):
             det.feed(BELOW, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
         events = drain(det)
         assert len(events) == 1
         # Count only pre-event context (frames before the first above-threshold row)
@@ -122,8 +144,8 @@ class TestPreTriggerBuffer:
 class TestPostTriggerWindow:
     def test_event_not_closed_before_100_post_trigger_rows(self):
         det = Detector()
-        det.feed(ABOVE, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
         # 50 debounce rows + 49 post-trigger rows = 99 total; event must still be open
         for _ in range(99):
             r = det.feed(BELOW, BL, timestamp=TS)
@@ -131,8 +153,8 @@ class TestPostTriggerWindow:
 
     def test_event_closes_after_100_post_trigger_rows(self):
         det = Detector()
-        det.feed(ABOVE, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
         result = None
         for _ in range(DRAIN):
             r = det.feed(BELOW, BL, timestamp=TS)
@@ -146,23 +168,30 @@ class TestInEvent:
     def test_in_event_false_initially(self):
         assert Detector().in_event is False
 
-    def test_in_event_true_during_event(self):
+    def test_in_event_true_while_pending(self):
+        # Even with only 2 rows (not yet ACTIVE), PENDING counts as in_event
         det = Detector()
         det.feed(ABOVE, BL, timestamp=TS)
         det.feed(ABOVE, BL, timestamp=TS)
         assert det.in_event is True
 
+    def test_in_event_true_during_active(self):
+        det = Detector()
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
+        assert det.in_event is True
+
     def test_in_event_true_during_debounce(self):
         det = Detector()
-        det.feed(ABOVE, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
         det.feed(BELOW, BL, timestamp=TS)
         assert det.in_event is True
 
     def test_in_event_true_during_post_trigger(self):
         det = Detector()
-        det.feed(ABOVE, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
         # Exhaust debounce window to enter post-trigger
         for _ in range(52):
             det.feed(BELOW, BL, timestamp=TS)
@@ -170,7 +199,7 @@ class TestInEvent:
 
     def test_in_event_false_after_event_closes(self):
         det = Detector()
-        det.feed(ABOVE, BL, timestamp=TS)
-        det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
         drain(det, DRAIN)
         assert det.in_event is False

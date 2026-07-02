@@ -17,7 +17,7 @@ _PRE_TRIGGER_CAPACITY = 1000   # rows in rolling pre-trigger buffer
 _PRE_TRIGGER_FLUSH = 100       # rows of pre-event context prepended on trigger
 _DEBOUNCE_ROWS = 50            # consecutive below-threshold rows before debounce expires
 _POST_TRIGGER_ROWS = 100       # rows collected after debounce expires
-_MIN_DURATION_ROWS = 2         # consecutive above-threshold rows to declare a real event
+_MIN_DURATION_ROWS = 5         # consecutive above-threshold rows to declare a real event (500 ms)
 
 _IDLE = 'idle'
 _PENDING = 'pending'
@@ -31,6 +31,8 @@ class Detector:
         self._state = _IDLE
         self._pending_row = None
         self._pending_ts = None
+        self._pending_rows: list = []   # rows accumulated while waiting for MIN_DURATION_ROWS
+        self._pending_count: int = 0    # above-threshold row count while PENDING
         self._frames: list = []
         self._start_time: Optional[datetime] = None
         self._below_count: int = 0   # consecutive below-threshold rows while ACTIVE
@@ -50,6 +52,8 @@ class Detector:
             if above:
                 self._pending_row = row
                 self._pending_ts = timestamp
+                self._pending_rows = [row]
+                self._pending_count = 1
                 self._state = _PENDING
             else:
                 self._pre_buf.append(row)
@@ -57,23 +61,32 @@ class Detector:
 
         if self._state == _PENDING:
             if above:
-                pre = list(self._pre_buf)[-_PRE_TRIGGER_FLUSH:]
-                self._frames = pre + [self._pending_row, row]
-                self._start_time = self._pending_ts
-                self._below_count = 0
-                self._pending_row = None
-                self._pending_ts = None
-                self._state = _ACTIVE
+                self._pending_rows.append(row)
+                self._pending_count += 1
+                if self._pending_count >= _MIN_DURATION_ROWS:
+                    # Signal sustained long enough — promote to ACTIVE
+                    pre = list(self._pre_buf)[-_PRE_TRIGGER_FLUSH:]
+                    self._frames = pre + list(self._pending_rows)
+                    self._start_time = self._pending_ts
+                    self._below_count = 0
+                    self._pending_row = None
+                    self._pending_ts = None
+                    self._pending_rows = []
+                    self._pending_count = 0
+                    self._state = _ACTIVE
             else:
-                # Single spike — emit as suspected RFI immediately
-                rfi_row = self._pending_row
+                # Too short — emit all accumulated pending rows as suspected RFI
+                rfi_rows = list(self._pending_rows)
                 rfi_ts = self._pending_ts
                 self._pending_row = None
                 self._pending_ts = None
-                self._pre_buf.append(rfi_row)
+                self._pending_rows = []
+                self._pending_count = 0
+                for r in rfi_rows:
+                    self._pre_buf.append(r)
                 self._pre_buf.append(row)
                 self._state = _IDLE
-                return Event(frames=[rfi_row], start_time=rfi_ts, end_time=timestamp, suspected_rfi=True)
+                return Event(frames=rfi_rows, start_time=rfi_ts, end_time=timestamp, suspected_rfi=True)
             return None
 
         if self._state == _ACTIVE:
