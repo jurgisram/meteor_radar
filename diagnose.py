@@ -39,7 +39,7 @@ for row in conn.execute("""
 
 print("\n=== Freq centroid (real events) ===")
 for row in conn.execute("""
-    SELECT CAST(frequency_centroid_hz/10)*10 AS c, COUNT(*)
+    SELECT CAST(frequency_centroid_hz/10 AS INT)*10 AS c, COUNT(*)
     FROM events WHERE suspected_rfi=0
     GROUP BY c ORDER BY c
 """):
