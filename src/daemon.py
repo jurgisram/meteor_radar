@@ -6,6 +6,8 @@ import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
+import numpy as np
+
 from src.acquisition import Acquisition, AcquisitionError
 from src.baseline import BaselineTracker
 from src.db import init_db, _check_writable
@@ -68,7 +70,7 @@ def run_loop(*, acq, baseline, detector, writer, db_conn, max_iterations=None):
                 sys.exit(1)
 
         # --- baseline update (gated by detector state) ---
-        baseline.update(row.max(), in_event=detector.in_event)
+        baseline.update(np.median(row), in_event=detector.in_event)
 
         # --- detection ---
         event = detector.feed(row, baseline)
