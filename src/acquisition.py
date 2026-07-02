@@ -52,7 +52,10 @@ class Acquisition:
             raise AcquisitionError(f"read_samples failed: {exc}") from exc
 
         samples = np.asarray(samples, dtype=np.complex64)
-        spectrum = np.fft.fft(samples, n=N_SAMPLES)
+        # Apply Hann window to reduce sidelobe leakage from −13 dB (rectangular) to −31 dB
+        window_func = np.hanning(N_SAMPLES)
+        window_power = np.sum(window_func ** 2)
+        spectrum = np.fft.fft(samples * window_func, n=N_SAMPLES)
 
         # Extract the 40 bins around TARGET_FREQ_HZ (wrapping handled by modular slice)
         if _BIN_END <= N_SAMPLES:
@@ -61,7 +64,7 @@ class Acquisition:
             # Wrap around (shouldn't happen with current constants, but be safe)
             window = np.concatenate([spectrum[_BIN_START:], spectrum[:_BIN_END - N_SAMPLES]])
 
-        power = (np.abs(window) ** 2) / (N_SAMPLES ** 2)
+        power = (np.abs(window) ** 2) / window_power
         power_db = 10.0 * np.log10(power + 1e-30)
         return power_db.astype(np.float32)
 
