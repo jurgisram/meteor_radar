@@ -83,13 +83,12 @@ class BaselineTracker:
 
     def is_drifting(self) -> bool:
         history = list(self._mean_history)
-        if len(history) < 2:
+        if len(history) < 100:
             return False
-        if history[0] == history[-1]:
-            return False
-        increasing = all(history[i] <= history[i + 1] for i in range(len(history) - 1))
-        decreasing = all(history[i] >= history[i + 1] for i in range(len(history) - 1))
-        return increasing or decreasing
+        window = 50
+        early = sum(history[:window]) / window
+        late = sum(history[-window:]) / window
+        return abs(late - early) > 1.0  # >1 dB drift
 
     def save(self, db_conn: sqlite3.Connection) -> None:
         now = datetime.now(timezone.utc).isoformat()
