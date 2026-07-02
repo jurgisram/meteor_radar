@@ -98,6 +98,18 @@ class TestEventSuppression:
         writer = self._run_one(baseline, detector_event=None)
         writer.write.assert_not_called()
 
+    def test_rfi_event_suppressed_even_after_warmup(self):
+        from src.detector import Event
+        baseline = _make_baseline(warmed_up=True, drifting=False)
+        rfi_event = Event(
+            frames=[np.full(40, -25.0, dtype=np.float32)],
+            start_time=datetime(2026, 1, 1, 0, 0, 0),
+            end_time=datetime(2026, 1, 1, 0, 0, 1),
+            suspected_rfi=True,
+        )
+        writer = self._run_one(baseline, detector_event=rfi_event)
+        writer.write.assert_not_called()
+
 
 class TestPeriodicOps:
     """Baseline recompute and save triggered at correct sample counts."""
