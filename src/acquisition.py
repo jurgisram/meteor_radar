@@ -44,6 +44,13 @@ class Acquisition:
         except Exception as exc:
             raise AcquisitionError(f"Failed to open RTL-SDR: {exc}") from exc
 
+        # Flush stale buffer contents from before tuning
+        for _ in range(5):
+            try:
+                self._sdr.read_samples(N_SAMPLES)
+            except Exception:
+                pass
+
     def read_row(self) -> np.ndarray:
         """Read one 100 ms IQ block and return 40-bin float32 power row in dBFS."""
         try:

@@ -51,6 +51,14 @@ class TestAcquisitionInit(unittest.TestCase):
         sdr = RtlSdrMock.return_value
         self.assertEqual(sdr.freq_correction, PPM_CORRECTION)
 
+    def test_open_device_flushes_5_reads(self):
+        iq = np.zeros(N_SAMPLES, dtype=np.complex64)
+        RtlSdrMock.return_value.read_samples.return_value = iq
+        acq = Acquisition()
+        acq.open_device()
+        # Should have issued exactly 5 flush reads during open_device
+        self.assertEqual(RtlSdrMock.return_value.read_samples.call_count, 5)
+
     def test_close_calls_close(self):
         acq = Acquisition()
         acq.open_device()
@@ -128,8 +136,11 @@ class TestFFTExtraction(unittest.TestCase):
 
         acq = Acquisition()
         acq.open_device()
+        # open_device() issues 5 flush reads; reset so we count only read_row()'s call
+        self.sdr_instance.read_samples.reset_mock()
         acq.read_row()
 
+        # read_row() must call read_samples exactly once with N_SAMPLES
         self.sdr_instance.read_samples.assert_called_once_with(N_SAMPLES)
 
 
