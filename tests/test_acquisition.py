@@ -45,11 +45,17 @@ class TestAcquisitionInit(unittest.TestCase):
         sdr = RtlSdrMock.return_value
         self.assertEqual(sdr.gain, GAIN_DB)
 
-    def test_open_device_sets_ppm_correction(self):
+    def test_open_device_skips_ppm_when_zero(self):
+        # PPM_CORRECTION=0 means no correction needed; freq_correction must NOT be set
+        # (setting it to 0 raises LIBUSB_ERROR_INVALID_PARAM on some hardware)
         acq = Acquisition()
         acq.open_device()
         sdr = RtlSdrMock.return_value
-        self.assertEqual(sdr.freq_correction, PPM_CORRECTION)
+        if PPM_CORRECTION == 0:
+            calls = [str(c) for c in sdr.mock_calls]
+            self.assertFalse(any('freq_correction' in c for c in calls))
+        else:
+            self.assertEqual(sdr.freq_correction, PPM_CORRECTION)
 
     def test_open_device_flushes_5_reads(self):
         iq = np.zeros(N_SAMPLES, dtype=np.complex64)

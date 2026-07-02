@@ -39,7 +39,8 @@ class Acquisition:
             sdr.center_freq = CENTER_FREQ_HZ
             sdr.sample_rate = SAMPLE_RATE
             sdr.gain = GAIN_DB
-            sdr.freq_correction = PPM_CORRECTION
+            if PPM_CORRECTION != 0:
+                sdr.freq_correction = PPM_CORRECTION
             self._sdr = sdr
         except Exception as exc:
             raise AcquisitionError(f"Failed to open RTL-SDR: {exc}") from exc
