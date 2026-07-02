@@ -89,10 +89,23 @@ class TestThreshold:
         from src.baseline import BaselineTracker
         self.tracker = BaselineTracker()
 
-    def test_threshold_is_mean_plus_3(self):
+    def test_threshold_is_mean_plus_3_sigma(self):
+        import numpy as np
+        # Use a varying signal so std > 0 after recompute
+        values = [-30.0, -29.0, -31.0] * 34
+        for v in values:
+            self.tracker.update(v, in_event=False)
+        self.tracker.recompute_std()
+        expected_std = max(self.tracker.std, 1e-6)
+        expected = self.tracker.mean + 3.0 * expected_std
+        assert self.tracker.threshold_db == pytest.approx(expected, abs=0.001)
+
+    def test_threshold_guards_zero_std(self):
+        # Constant signal → std=0 before recompute; guard ensures threshold ≠ mean
         for _ in range(100):
             self.tracker.update(-30.0, in_event=False)
-        assert self.tracker.threshold_db == pytest.approx(self.tracker.mean + 3.0, abs=0.001)
+        # std is 0 (not yet recomputed); guard: max(std, 1e-6) = 1e-6
+        assert self.tracker.threshold_db == pytest.approx(self.tracker.mean + 3.0 * 1e-6, abs=1e-9)
 
 
 class TestRecomputeStd:

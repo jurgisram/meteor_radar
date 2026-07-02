@@ -75,7 +75,8 @@ class BaselineTracker:
 
     @property
     def threshold_db(self) -> float:
-        return self._mean + 3.0
+        std = max(self._std, 1e-6)
+        return self._mean + 3.0 * std
 
     def is_warmed_up(self) -> bool:
         return self._warmed_up
