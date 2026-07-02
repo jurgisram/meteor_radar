@@ -5,6 +5,7 @@ CENTER_FREQ_HZ = 143_300_000   # 143.3 MHz — PLL-friendly offset
 TARGET_FREQ_HZ = 143_050_000   # 143.050 MHz — GRAVES carrier
 SAMPLE_RATE = 1_024_000        # 1.024 MSPS
 GAIN_DB = 40.2                 # RTL-SDR Blog V3 gain setting
+PPM_CORRECTION = 0             # Set to measured crystal offset; 0 uses TCXO reference if available
 N_SAMPLES = 102_400            # 100 ms accumulation window (100 ms × 1.024 MSPS)
 N_BINS = 40                    # ±200 Hz around target at 10 Hz/bin
 
@@ -38,6 +39,7 @@ class Acquisition:
             sdr.center_freq = CENTER_FREQ_HZ
             sdr.sample_rate = SAMPLE_RATE
             sdr.gain = GAIN_DB
+            sdr.freq_correction = PPM_CORRECTION
             self._sdr = sdr
         except Exception as exc:
             raise AcquisitionError(f"Failed to open RTL-SDR: {exc}") from exc

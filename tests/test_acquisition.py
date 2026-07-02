@@ -10,7 +10,7 @@ RtlSdrMock = MagicMock()
 rtlsdr_mod.RtlSdr = RtlSdrMock
 sys.modules["rtlsdr"] = rtlsdr_mod
 
-from src.acquisition import Acquisition, AcquisitionError, N_SAMPLES, CENTER_FREQ_HZ, TARGET_FREQ_HZ, SAMPLE_RATE, GAIN_DB, N_BINS, BIN_OFFSET
+from src.acquisition import Acquisition, AcquisitionError, N_SAMPLES, CENTER_FREQ_HZ, TARGET_FREQ_HZ, SAMPLE_RATE, GAIN_DB, N_BINS, BIN_OFFSET, PPM_CORRECTION
 
 CENTER_HZ = CENTER_FREQ_HZ  # 143.3e6
 TARGET_HZ = TARGET_FREQ_HZ  # 143.05e6
@@ -44,6 +44,12 @@ class TestAcquisitionInit(unittest.TestCase):
         acq.open_device()
         sdr = RtlSdrMock.return_value
         self.assertEqual(sdr.gain, GAIN_DB)
+
+    def test_open_device_sets_ppm_correction(self):
+        acq = Acquisition()
+        acq.open_device()
+        sdr = RtlSdrMock.return_value
+        self.assertEqual(sdr.freq_correction, PPM_CORRECTION)
 
     def test_close_calls_close(self):
         acq = Acquisition()
