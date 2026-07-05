@@ -166,6 +166,41 @@ class TestPostTriggerWindow:
         assert result is not None
 
 
+class TestMaxActiveDuration:
+    def test_force_close_at_max_active_rows(self):
+        from src.detector import _MAX_ACTIVE_ROWS
+        det = Detector()
+        # Enter ACTIVE (needs MIN_DURATION_ROWS=5 above rows)
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
+        # Feed _MAX_ACTIVE_ROWS above rows; force-close transitions to POST, returns None
+        result_during = None
+        for _ in range(_MAX_ACTIVE_ROWS):
+            r = det.feed(ABOVE, BL, timestamp=TS)
+            if r is not None:
+                result_during = r
+        assert result_during is None
+        assert det.in_event is True  # still in POST collecting context
+        events = drain(det)
+        assert len(events) == 1
+        assert events[0].suspected_rfi is False
+
+    def test_detector_recovers_after_force_close(self):
+        from src.detector import _MAX_ACTIVE_ROWS
+        det = Detector()
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
+        for _ in range(_MAX_ACTIVE_ROWS):
+            det.feed(ABOVE, BL, timestamp=TS)
+        drain(det)
+        assert det.in_event is False
+        # Normal event after recovery
+        for _ in range(5):
+            det.feed(ABOVE, BL, timestamp=TS)
+        events = drain(det)
+        assert len(events) == 1
+
+
 class TestInEvent:
     def test_in_event_false_initially(self):
         assert Detector().in_event is False

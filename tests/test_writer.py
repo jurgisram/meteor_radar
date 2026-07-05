@@ -220,3 +220,23 @@ class TestFrequencyMetrics:
         row_id = writer.write(make_event(), FakeBaseline())
         assert isinstance(row_id, int)
         assert row_id >= 1
+
+
+class TestFloatStorage:
+    def test_snr_baseline_stored_as_float_not_blob(self, db):
+        """snr_db, baseline_mean_db, baseline_std_db must be REAL (Python float),
+        not BLOB. sqlite3 silently stores numpy scalars as 4-byte BLOBs, which
+        corrupts the values and breaks subsequent arithmetic."""
+
+        class NumpyBaseline:
+            mean = np.float32(-35.0)
+            std = np.float32(1.2)
+
+        frames = [np.full(40, np.float32(-25.0), dtype=np.float32)]
+        writer = EventWriter(db)
+        writer.write(make_event(frames=frames), NumpyBaseline())
+
+        row = db.execute("SELECT snr_db, baseline_mean_db, baseline_std_db FROM events").fetchone()
+        assert isinstance(row[0], float), f"snr_db stored as {type(row[0])}, expected float"
+        assert isinstance(row[1], float), f"baseline_mean_db stored as {type(row[1])}, expected float"
+        assert isinstance(row[2], float), f"baseline_std_db stored as {type(row[2])}, expected float"

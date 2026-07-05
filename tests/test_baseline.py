@@ -253,6 +253,34 @@ class TestPersistence:
         assert restored.load(self.conn) is True
         restored.update(row.max(), in_event=False)  # must not raise
 
+    def test_load_suppresses_recompute_std_until_ring_refreshes(self):
+        """After load(), recompute_std() must not collapse std to 0 until ring is refreshed.
+        The restored ring is all-identical values, so immediate recompute gives std=0,
+        which collapses the threshold and causes instant re-trigger on restart."""
+        from src.baseline import BaselineTracker
+
+        # Save a tracker with a real std
+        for v in [-30.0, -29.0, -31.0] * 34:
+            self.tracker.update(v, in_event=False)
+        self.tracker.recompute_std()
+        saved_std = self.tracker.std
+        assert saved_std > 0
+        self.tracker.save(self.conn)
+
+        new_tracker = BaselineTracker()
+        new_tracker.load(self.conn)
+        assert new_tracker.std == pytest.approx(saved_std, abs=0.001)
+
+        skip_count = BaselineTracker.RING_SIZE // 100  # = 30
+        # All skip_count calls should be suppressed
+        for _ in range(skip_count):
+            new_tracker.recompute_std()
+        assert new_tracker.std == pytest.approx(saved_std, abs=0.001)
+
+        # One more call: skip counter exhausted, ring is all-identical → std becomes 0
+        new_tracker.recompute_std()
+        assert new_tracker.std == pytest.approx(0.0, abs=1e-6)
+
     def test_load_corrupt_blob_returns_false(self):
         """If mean_db is a BLOB (old corrupt row), load() must return False, not crash."""
         from src.baseline import BaselineTracker

@@ -17,6 +17,7 @@ class BaselineTracker:
         self._total_samples: int = 0
         self._consecutive_event: int = 0
         self._warmed_up: bool = False
+        self._skip_recompute: int = 0  # suppresses recompute_std() after load() until ring refreshes
         # Drift tracking: store mean snapshots at each update to check monotonicity
         self._mean_history: deque = deque(maxlen=self.RING_SIZE)
 
@@ -57,6 +58,9 @@ class BaselineTracker:
         self._mean_history.append(self._mean)
 
     def recompute_std(self) -> None:
+        if self._skip_recompute > 0:
+            self._skip_recompute -= 1
+            return
         if len(self._ring) < 2:
             self._std = 0.0
             return
@@ -124,6 +128,10 @@ class BaselineTracker:
             self._ring = deque([float(mean_db)] * n, maxlen=self.RING_SIZE)
             self._warmed_up = True
             self._total_samples = self.WARMUP_SAMPLES  # mark as past warmup
+            # Suppress recompute_std() until the ring is refreshed with real data; the
+            # restored ring is all-identical (mean copies), so recomputing immediately
+            # would collapse std to 0 and re-trigger the detector on every restart.
+            self._skip_recompute = self.RING_SIZE // 100
             return True
         except (ValueError, TypeError):
             # Corrupt or unexpected DB value (e.g. old BLOB-stored numpy scalar) — cold start

@@ -20,6 +20,7 @@ _DEBOUNCE_ROWS = 50            # consecutive below-threshold rows before debounc
 _POST_TRIGGER_ROWS = 100       # rows collected after debounce expires
 _MIN_DURATION_ROWS = 5         # consecutive above-threshold rows to declare a real event (500 ms)
 _MIN_INTER_EVENT_ROWS = 50     # minimum POST rows before a new event can start (5 s)
+_MAX_ACTIVE_ROWS = 600         # 60 s at 10 Hz — force-close runaway events
 
 _IDLE = 'idle'
 _PENDING = 'pending'
@@ -38,6 +39,7 @@ class Detector:
         self._frames: list = []
         self._start_time: Optional[datetime] = None
         self._below_count: int = 0   # consecutive below-threshold rows while ACTIVE
+        self._active_row_count: int = 0  # total rows in ACTIVE state; triggers force-close at cap
         self._post_count: int = 0    # rows collected in post-trigger window
         self._signal_end_time: Optional[datetime] = None  # recorded when ACTIVE→POST
 
@@ -72,6 +74,7 @@ class Detector:
                     self._frames = pre + list(self._pending_rows)
                     self._start_time = self._pending_ts
                     self._below_count = 0
+                    self._active_row_count = 0
                     self._pending_row = None
                     self._pending_ts = None
                     self._pending_rows = []
@@ -95,6 +98,14 @@ class Detector:
 
         if self._state == _ACTIVE:
             self._frames.append(row)
+            self._active_row_count += 1
+            if self._active_row_count >= _MAX_ACTIVE_ROWS:
+                # Force-close: runaway event — transition to POST to collect final context
+                self._signal_end_time = timestamp
+                self._state = _POST
+                self._post_count = 1
+                self._active_row_count = 0
+                return None
             if above:
                 self._below_count = 0
             else:
@@ -136,6 +147,7 @@ class Detector:
         self._frames = []
         self._start_time = None
         self._below_count = 0
+        self._active_row_count = 0
         self._post_count = 0
         self._signal_end_time = None
         self._state = _IDLE

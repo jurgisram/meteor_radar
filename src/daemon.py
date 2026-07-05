@@ -70,19 +70,20 @@ def run_loop(*, acq, baseline, detector, writer, db_conn, max_iterations=None):
                 sys.exit(1)
 
         # --- baseline update (gated by detector state) ---
-        baseline.update(np.median(row), in_event=detector.in_event)
+        baseline.update(float(row.max()), in_event=detector.in_event)
 
-        # --- detection ---
-        event = detector.feed(row, baseline)
-        if event and not event.suspected_rfi and baseline.is_warmed_up() and not baseline.is_drifting():
-            writer.write(event, baseline)
-            log.info(
-                "Event: timestamp=%s snr_db=%.1f duration_ms=%d suspected_rfi=%s",
-                event.start_time.isoformat(),
-                getattr(baseline, 'mean', 0),
-                int((event.end_time - event.start_time).total_seconds() * 1000),
-                event.suspected_rfi,
-            )
+        # --- detection (gated by warmup) ---
+        if baseline.is_warmed_up():
+            event = detector.feed(row, baseline)
+            if event and not event.suspected_rfi and not baseline.is_drifting():
+                writer.write(event, baseline)
+                log.info(
+                    "Event: timestamp=%s snr_db=%.1f duration_ms=%d suspected_rfi=%s",
+                    event.start_time.isoformat(),
+                    getattr(baseline, 'mean', 0),
+                    int((event.end_time - event.start_time).total_seconds() * 1000),
+                    event.suspected_rfi,
+                )
 
         sample_count += 1
         i += 1

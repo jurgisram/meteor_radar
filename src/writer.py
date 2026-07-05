@@ -27,7 +27,7 @@ class EventWriter:
 
         duration_ms = (event.signal_end_time - event.start_time).total_seconds() * 1000
         peak_power_db = float(spectrogram.max())
-        snr_db = peak_power_db - baseline.mean
+        snr_db = float(peak_power_db - baseline.mean)
         integrated_power = float(np.sum(np.maximum(0.0, spectrogram - baseline.mean)))
         frequency_centroid_hz = self._compute_centroid(spectrogram)
         bandwidth_hz = self._compute_bandwidth(spectrogram, frequency_centroid_hz)
@@ -51,8 +51,8 @@ class EventWriter:
                 bandwidth_hz,
                 1 if event.suspected_rfi else 0,
                 cluster_id,
-                baseline.mean,
-                baseline.std,
+                float(baseline.mean),
+                float(baseline.std),
                 spectrogram_blob,
                 spectrogram_shape,
                 _FFT_BIN_WIDTH_HZ,
