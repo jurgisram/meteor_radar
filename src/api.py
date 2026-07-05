@@ -91,7 +91,7 @@ def handle_stats():
         since_24h = conn.execute("""
             SELECT COUNT(*) FROM events
             WHERE suspected_rfi=0
-              AND timestamp >= datetime('now', '-24 hours')
+              AND replace(timestamp, 'T', ' ') >= datetime('now', '-24 hours')
         """).fetchone()[0]
 
         snr = conn.execute("""
@@ -108,7 +108,7 @@ def handle_stats():
             SELECT strftime('%Y-%m-%dT%H:00:00Z', timestamp) AS hour, COUNT(*) AS n
             FROM events
             WHERE suspected_rfi=0
-              AND timestamp >= datetime('now', '-24 hours')
+              AND replace(timestamp, 'T', ' ') >= datetime('now', '-24 hours')
             GROUP BY hour
             ORDER BY hour
         """).fetchall()
