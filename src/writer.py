@@ -3,9 +3,11 @@ from datetime import datetime, timezone, timedelta
 
 import numpy as np
 
+from src.acquisition import N_SAMPLES, SAMPLE_RATE
 from src.detector import Event
 
 _FFT_BIN_WIDTH_HZ = 10.0
+_ROW_PERIOD_MS = float(N_SAMPLES) / float(SAMPLE_RATE) * 1000.0  # 100.0 ms
 _CENTER_BIN = 20  # bin index corresponding to 143.050 MHz
 _CLUSTER_GAP_S = 60.0
 
@@ -38,8 +40,8 @@ class EventWriter:
                 timestamp, duration_ms, peak_power_db, snr_db, integrated_power,
                 frequency_centroid_hz, bandwidth_hz, suspected_rfi, cluster_id,
                 baseline_mean_db, baseline_std_db, spectrogram, spectrogram_shape,
-                fft_bin_width_hz
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                fft_bin_width_hz, row_period_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event.start_time.isoformat(),
@@ -56,6 +58,7 @@ class EventWriter:
                 spectrogram_blob,
                 spectrogram_shape,
                 _FFT_BIN_WIDTH_HZ,
+                _ROW_PERIOD_MS,
             ),
         )
         self._conn.commit()

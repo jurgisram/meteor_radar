@@ -48,17 +48,16 @@ class TestSingleRowSpike:
 
 
 class TestTwoRowSpike:
-    # With _MIN_DURATION_ROWS=5, two rows are not enough to promote to ACTIVE;
-    # they exit PENDING as a suspected_rfi event instead.
-    def test_two_rows_still_suspected_rfi(self):
+    # With _MIN_DURATION_ROWS=2, two consecutive above rows promote to ACTIVE → real event.
+    def test_two_rows_is_real_event(self):
         det = Detector()
         det.feed(ABOVE, BL, timestamp=TS)
         det.feed(ABOVE, BL, timestamp=TS)
         events = drain(det)
         assert len(events) == 1
-        assert events[0].suspected_rfi is True
+        assert events[0].suspected_rfi is False
 
-    def test_two_row_rfi_has_two_above_threshold_frames(self):
+    def test_two_row_event_has_two_above_threshold_frames(self):
         det = Detector()
         det.feed(ABOVE, BL, timestamp=TS)
         det.feed(ABOVE, BL, timestamp=TS)
@@ -67,20 +66,19 @@ class TestTwoRowSpike:
         assert len(above_frames) == 2
 
 
-class TestFiveRowEvent:
-    # _MIN_DURATION_ROWS=5: exactly 5 consecutive above rows produces a real event.
-    def test_five_rows_not_rfi(self):
+class TestMinDurationEvent:
+    # _MIN_DURATION_ROWS=2: exactly 2 consecutive above rows produces a real event.
+    def test_two_rows_not_rfi(self):
         det = Detector()
-        for _ in range(5):
+        for _ in range(2):
             det.feed(ABOVE, BL, timestamp=TS)
         events = drain(det)
         assert len(events) == 1
         assert events[0].suspected_rfi is False
 
-    def test_four_rows_still_rfi(self):
+    def test_one_row_still_rfi(self):
         det = Detector()
-        for _ in range(4):
-            det.feed(ABOVE, BL, timestamp=TS)
+        det.feed(ABOVE, BL, timestamp=TS)
         events = drain(det)
         assert len(events) == 1
         assert events[0].suspected_rfi is True
