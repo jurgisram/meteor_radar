@@ -31,6 +31,8 @@ class AcquisitionError(RuntimeError):
 class Acquisition:
     def __init__(self):
         self._sdr = None
+        self._window = np.hanning(N_SAMPLES)
+        self._window_power = float(np.sum(self._window ** 2))
 
     def open_device(self):
         try:
@@ -61,9 +63,7 @@ class Acquisition:
 
         samples = np.asarray(samples, dtype=np.complex64)
         # Apply Hann window to reduce sidelobe leakage from −13 dB (rectangular) to −31 dB
-        window_func = np.hanning(N_SAMPLES)
-        window_power = np.sum(window_func ** 2)
-        spectrum = np.fft.fft(samples * window_func, n=N_SAMPLES)
+        spectrum = np.fft.fft(samples * self._window, n=N_SAMPLES)
 
         # Extract the 40 bins around TARGET_FREQ_HZ (wrapping handled by modular slice)
         if _BIN_END <= N_SAMPLES:
@@ -72,7 +72,7 @@ class Acquisition:
             # Wrap around (shouldn't happen with current constants, but be safe)
             window = np.concatenate([spectrum[_BIN_START:], spectrum[:_BIN_END - N_SAMPLES]])
 
-        power = (np.abs(window) ** 2) / window_power
+        power = (np.abs(window) ** 2) / self._window_power
         power_db = 10.0 * np.log10(power + 1e-30)
         return power_db.astype(np.float32)
 

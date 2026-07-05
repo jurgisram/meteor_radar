@@ -15,7 +15,7 @@ EVENTS_COLUMNS = {
     "id", "timestamp", "duration_ms", "peak_power_db", "snr_db",
     "integrated_power", "frequency_centroid_hz", "bandwidth_hz",
     "suspected_rfi", "cluster_id", "baseline_mean_db", "baseline_std_db",
-    "spectrogram", "spectrogram_shape", "fft_bin_width_hz",
+    "spectrogram", "spectrogram_shape", "fft_bin_width_hz", "row_period_ms",
 }
 
 BASELINE_STATE_COLUMNS = {

@@ -75,7 +75,7 @@ def run_loop(*, acq, baseline, detector, writer, db_conn, max_iterations=None):
         # --- detection (gated by warmup) ---
         if baseline.is_warmed_up():
             event = detector.feed(row, baseline)
-            if event and not event.suspected_rfi and not baseline.is_drifting():
+            if event and not baseline.is_drifting():
                 writer.write(event, baseline)
                 log.info(
                     "Event: timestamp=%s snr_db=%.1f duration_ms=%d suspected_rfi=%s",

@@ -101,11 +101,11 @@ class TestThreshold:
         assert self.tracker.threshold_db == pytest.approx(expected, abs=0.001)
 
     def test_threshold_guards_zero_std(self):
-        # Constant signal → std=0 before recompute; guard ensures threshold ≠ mean
+        # Constant signal → std=0 before recompute; physical floor of 0.5 dB applies
         for _ in range(100):
             self.tracker.update(-30.0, in_event=False)
-        # std is 0 (not yet recomputed); guard: max(std, 1e-6) = 1e-6
-        assert self.tracker.threshold_db == pytest.approx(self.tracker.mean + 3.0 * 1e-6, abs=1e-9)
+        # std is 0 (not yet recomputed); guard: max(std, 0.5) = 0.5
+        assert self.tracker.threshold_db == pytest.approx(self.tracker.mean + 3.0 * 0.5, abs=1e-9)
 
 
 class TestRecomputeStd:

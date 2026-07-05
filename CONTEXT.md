@@ -60,16 +60,18 @@ nohup rtl_power -f 143.00M:143.10M:100 -g 40 -i 1 -e 12h /mnt/hdd/output.csv > /
 
 Replace `rtl_power` with a custom Python daemon using `pyrtlsdr`. The key motivation: `rtl_power` generates ~670 MB/day of continuous spectral data. The custom pipeline logs only compact summaries continuously, and saves full-resolution raw samples only around detected events (<1 GB/year).
 
-**Sampling:** 5ms chunks (200 Hz power sampling). This captures sub-100ms underdense meteors that would appear as a single blip at coarser rates.
+**Sampling:** 100ms chunks (10 Hz power sampling). Sub-100ms underdense meteors are not resolved at this rate; minimum detectable event duration is 200ms (2 consecutive above-threshold rows).
 
 **Architecture:**
 ```
 RTL-SDR V3
   → pyrtlsdr @ 143.3 MHz center (IQ stream ~1 MSPS)
-  → FFT per 5ms chunk over ±200 Hz around 143.050 MHz
+  → FFT per 100ms chunk over ±200 Hz around 143.050 MHz
   → rolling baseline + threshold detection (3.0 dB) on peak bin
   → SQLite event logging (summary + full spectrogram snapshot)
 ```
+
+**Known constraints:** Synchronous `read_samples()` drops ~12% of the stream at 10 Hz. The actual row cadence is irregular; `row_period_ms=100.0` stored per event is nominal, not measured. Phase 4 SVG time-axis reconstruction should account for this gap rate.
 
 **SQLite schema** (per event):
 - `timestamp` — UTC detection time

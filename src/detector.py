@@ -18,7 +18,7 @@ _PRE_TRIGGER_CAPACITY = 1000   # rows in rolling pre-trigger buffer
 _PRE_TRIGGER_FLUSH = 100       # rows of pre-event context prepended on trigger
 _DEBOUNCE_ROWS = 50            # consecutive below-threshold rows before debounce expires
 _POST_TRIGGER_ROWS = 100       # rows collected after debounce expires
-_MIN_DURATION_ROWS = 5         # consecutive above-threshold rows to declare a real event (500 ms)
+_MIN_DURATION_ROWS = 2         # consecutive above-threshold rows to declare a real event (200 ms)
 _MIN_INTER_EVENT_ROWS = 50     # minimum POST rows before a new event can start (5 s)
 _MAX_ACTIVE_ROWS = 600         # 60 s at 10 Hz — force-close runaway events
 

@@ -45,9 +45,15 @@ def init_db(path: str) -> sqlite3.Connection:
             baseline_std_db      REAL,
             spectrogram          BLOB,
             spectrogram_shape    TEXT,
-            fft_bin_width_hz     REAL
+            fft_bin_width_hz     REAL,
+            row_period_ms        REAL
         )
     """)
+    try:
+        conn.execute("ALTER TABLE events ADD COLUMN row_period_ms REAL")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
     conn.execute("""
         CREATE TABLE IF NOT EXISTS baseline_state (
             saved_at      TEXT,
