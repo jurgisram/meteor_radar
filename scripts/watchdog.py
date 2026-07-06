@@ -38,7 +38,7 @@ def _send_discord(webhook_url: str, message: str):
 
 
 def _get_last_alive(db_path: str):
-    """Returns (last_alive_dt_utc_or_None, event_count_24h, event_count_total)."""
+    """Returns (last_alive_dt_utc_or_None, event_count_24h, event_count_total, rfi_count_24h)."""
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute(
@@ -52,14 +52,20 @@ def _get_last_alive(db_path: str):
 
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         count_24h = conn.execute(
-            "SELECT COUNT(*) FROM events WHERE timestamp > ?", (cutoff,)
+            "SELECT COUNT(*) FROM events WHERE timestamp > ? AND suspected_rfi = 0", (cutoff,)
         ).fetchone()[0]
 
-        total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        total = conn.execute(
+            "SELECT COUNT(*) FROM events WHERE suspected_rfi = 0"
+        ).fetchone()[0]
+
+        rfi_count_24h = conn.execute(
+            "SELECT COUNT(*) FROM events WHERE timestamp > ? AND suspected_rfi = 1", (cutoff,)
+        ).fetchone()[0]
     finally:
         conn.close()
 
-    return last_alive, count_24h, total
+    return last_alive, count_24h, total, rfi_count_24h
 
 
 def main():
@@ -71,7 +77,7 @@ def main():
     now_utc = datetime.now(timezone.utc)
     now_vilnius = now_utc.astimezone(VILNIUS_TZ)
 
-    last_alive, count_24h, total = _get_last_alive(DB_PATH)
+    last_alive, count_24h, total, rfi_count_24h = _get_last_alive(DB_PATH)
     state = _load_state(STATE_PATH)
 
     # NULL last_alive → daemon hasn't run yet, not an alert condition
@@ -111,8 +117,9 @@ def main():
     if now_vilnius.hour == 9 and state.get("last_summary_date") != today_str:
         age_int = int(age_minutes)
         msg = (
-            f"\U0001f4ca Daily summary: {count_24h} events in 24h, "
-            f"{total} all-time, heartbeat {age_int} min ago"
+            f"\U0001f4ca Daily summary: {count_24h} meteor events in 24h "
+            f"({rfi_count_24h} RFI filtered), {total} all-time, "
+            f"heartbeat {age_int} min ago"
         )
         _send_discord(webhook_url, msg)
         state["last_summary_date"] = today_str
