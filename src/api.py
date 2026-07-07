@@ -3,14 +3,16 @@
 Listens on 0.0.0.0:8765 (Tailscale-reachable). No auth — Tailscale is the boundary.
 
 Endpoints:
-  GET /health                         → {"status": "ok", "last_alive": "..."}
-  GET /events?limit=50&since=ISO&rfi=0 → list of event rows (no spectrogram blob)
-  GET /stats                          → hourly counts, totals, SNR distribution
-  GET /baseline                       → latest baseline_state row
+  GET /health                              → {"status": "ok", "last_alive": "..."}
+  GET /events?limit=50&since=ISO&rfi=0    → list of event rows (no spectrogram blob)
+  GET /spectrogram?ids=1,2,3&max_rows=80  → raw spectrogram data per event id
+  GET /stats                              → hourly counts, totals, SNR distribution
+  GET /baseline                           → latest baseline_state row
 """
 
 import json
 import sqlite3
+import struct
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -77,6 +79,65 @@ def handle_events(params):
         rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
         conn.close()
         return _json({"count": len(rows), "events": rows})
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+def handle_spectrogram(params):
+    ids_str = params.get('ids', [''])[0]
+    max_rows = int(params.get('max_rows', ['80'])[0])
+    if not ids_str:
+        return _json({"error": "ids parameter required"}, 400)
+
+    try:
+        event_ids = [int(x) for x in ids_str.split(',') if x.strip()]
+    except ValueError:
+        return _json({"error": "ids must be comma-separated integers"}, 400)
+
+    try:
+        conn = _db()
+        result = {}
+        placeholders = ','.join('?' * len(event_ids))
+        rows = conn.execute(
+            f"SELECT id, spectrogram, spectrogram_shape FROM events WHERE id IN ({placeholders})",
+            event_ids
+        ).fetchall()
+        conn.close()
+
+        for row in rows:
+            eid = row['id']
+            blob = row['spectrogram']
+            shape_str = row['spectrogram_shape']
+            if not blob or not shape_str:
+                continue
+
+            n_rows, n_cols = (int(x) for x in shape_str.split(','))
+            n_floats = n_rows * n_cols
+            if len(blob) < n_floats * 4:
+                continue
+
+            # Unpack float32 values
+            flat = struct.unpack_from(f'{n_floats}f', blob, 0)
+            grid = [list(flat[r * n_cols:(r + 1) * n_cols]) for r in range(n_rows)]
+
+            # Downsample rows via max-pooling if over max_rows
+            if n_rows > max_rows:
+                step = n_rows / max_rows
+                downsampled = []
+                for i in range(max_rows):
+                    r0 = int(i * step)
+                    r1 = max(r0 + 1, int((i + 1) * step))
+                    pool_rows = grid[r0:r1]
+                    merged = [max(pool_rows[r][c] for r in range(len(pool_rows))) for c in range(n_cols)]
+                    downsampled.append(merged)
+                grid = downsampled
+                n_rows = max_rows
+
+            # Round to 2dp to reduce JSON size
+            grid = [[round(v, 2) for v in row] for row in grid]
+            result[str(eid)] = {"rows": n_rows, "cols": n_cols, "data": grid}
+
+        return _json(result)
     except Exception as e:
         return _json({"error": str(e)}, 500)
 
@@ -152,6 +213,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {
             '/health': lambda: handle_health(),
             '/events': lambda: handle_events(params),
+            '/spectrogram': lambda: handle_spectrogram(params),
             '/stats': lambda: handle_stats(),
             '/baseline': lambda: handle_baseline(),
         }
